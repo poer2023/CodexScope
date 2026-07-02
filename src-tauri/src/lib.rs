@@ -12,10 +12,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(target_os = "macos"))]
 use tauri::WindowEvent;
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+#[cfg(not(target_os = "macos"))]
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri_plugin_autostart::ManagerExt;
 // Positioner is only used for the non-macOS fallback; macOS positions the
 // NSPanel manually (see position_panel).
@@ -802,6 +803,25 @@ fn save_screenshot(data_url: String) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+fn get_autostart_enabled(app: tauri::AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> bool {
+    let mgr = app.autolaunch();
+    let _ = if enabled { mgr.enable() } else { mgr.disable() };
+    let now_on = mgr.is_enabled().unwrap_or(enabled);
+    save_autostart_pref(now_on);
+    now_on
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 /// For CLI/example validation against real logs.
 pub fn dashboard_json() -> String {
     serde_json::to_string_pretty(&parser::build_dashboard()).unwrap_or_default()
@@ -852,7 +872,14 @@ pub fn run() {
     }
 
     builder
-        .invoke_handler(tauri::generate_handler![get_dashboard, save_screenshot, begin_drag])
+        .invoke_handler(tauri::generate_handler![
+            get_dashboard,
+            save_screenshot,
+            get_autostart_enabled,
+            set_autostart_enabled,
+            quit_app,
+            begin_drag
+        ])
         .setup(move |app| {
             // Menu-bar–only app: no Dock icon, runs in the background.
             #[cfg(target_os = "macos")]
@@ -880,6 +907,8 @@ pub fn run() {
             // we do NOT force-enable on every start, which would undo a manual
             // opt-out. `autostart_on` seeds the menu checkbox.
             let autostart_on = reconcile_autostart(app.handle());
+            #[cfg(target_os = "macos")]
+            let _ = autostart_on;
 
             // Popover behaviour. On macOS, convert the window to a non-activating
             // NSPanel so it can float over apps in native fullscreen, and hide it
@@ -984,38 +1013,12 @@ pub fn run() {
             let label = fmt_tokens_m(dash.today_tokens);
             let tray_title = tray_title_for_platform(&label);
 
-            let open_i = MenuItem::with_id(app, "open", "Open CodexScope", true, None::<&str>)?;
-            let refresh_i = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
-            // Launch-at-login toggle (a checkbox item). Seeded from the reconciled
-            // preference; clicking it flips the OS registration and persists.
-            let autostart_i = CheckMenuItem::with_id(
-                app,
-                "autostart",
-                "Launch at Login",
-                true,
-                autostart_on,
-                None::<&str>,
-            )?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &open_i,
-                    &refresh_i,
-                    &PredefinedMenuItem::separator(app)?,
-                    &autostart_i,
-                    &PredefinedMenuItem::separator(app)?,
-                    &quit_i,
-                ],
-            )?;
-
             let lh_tray = last_hidden.clone();
             let mut tray_builder = TrayIconBuilder::with_id("main")
                 .icon(tauri::include_image!("icons/tray-icon.png"))
                 .icon_as_template(false)
                 .tooltip(format!("CodexScope · today {}", label))
-                .menu(&menu)
-                .show_menu_on_left_click(false) // left = toggle panel, right = menu
+                .show_menu_on_left_click(false) // left = toggle panel; non-macOS right = native menu
                 .on_tray_icon_event(move |tray, event| {
                     let app = tray.app_handle();
                     tauri_plugin_positioner::on_tray_event(app, &event);
@@ -1037,12 +1040,18 @@ pub fn run() {
                             });
                         }
                     }
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
+                    // macOS does not attach an NSStatusItem menu, so mouseUp is
+                    // reliable and avoids focus churn from showing the panel
+                    // while the status-button press is still active.
+                    let should_toggle_popover = matches!(
+                        event,
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        }
+                    );
+                    if should_toggle_popover {
                         // if it was just hidden by the blur from this same click, leave it closed
                         let just_hidden = now_ms() - lh_tray.load(Ordering::Relaxed) < 250;
                         #[cfg(target_os = "macos")]
@@ -1075,7 +1084,36 @@ pub fn run() {
                         }
                     }
                 })
-                .on_menu_event(move |app, event| match event.id.as_ref() {
+                ;
+
+            #[cfg(not(target_os = "macos"))]
+            {
+                let open_i = MenuItem::with_id(app, "open", "Open CodexScope", true, None::<&str>)?;
+                let refresh_i = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
+                // Launch-at-login toggle (a checkbox item). Seeded from the reconciled
+                // preference; clicking it flips the OS registration and persists.
+                let autostart_i = CheckMenuItem::with_id(
+                    app,
+                    "autostart",
+                    "Launch at Login",
+                    true,
+                    autostart_on,
+                    None::<&str>,
+                )?;
+                let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+                let menu = Menu::with_items(
+                    app,
+                    &[
+                        &open_i,
+                        &refresh_i,
+                        &PredefinedMenuItem::separator(app)?,
+                        &autostart_i,
+                        &PredefinedMenuItem::separator(app)?,
+                        &quit_i,
+                    ],
+                )?;
+
+                tray_builder = tray_builder.menu(&menu).on_menu_event(move |app, event| match event.id.as_ref() {
                     "open" => show_popover(app),
                     "refresh" => refresh(app),
                     "autostart" => {
@@ -1090,14 +1128,18 @@ pub fn run() {
                     }
                     "quit" => app.exit(0),
                     _ => {}
-                })
-                ;
+                });
+            }
 
             if let Some(title) = tray_title.as_deref() {
                 tray_builder = tray_builder.title(title);
             }
 
-            let _tray = tray_builder.build(app)?;
+            let tray = tray_builder.build(app)?;
+            // Re-apply after creation so left click is always reserved for the
+            // popover. On macOS we intentionally do not attach an NSStatusItem
+            // menu because AppKit treats that menu as the left-click action.
+            let _ = tray.set_show_menu_on_left_click(false);
 
             // Load prices off the main thread (the fetch can block ~20s on a
             // cold/stale cache) and refresh once a day. build_dashboard reads the

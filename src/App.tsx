@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
@@ -244,7 +244,158 @@ function ScreenshotButton({ theme, busy, onClick }: { theme: Theme; busy: boolea
   );
 }
 
-function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash: Dashboard; dark: boolean; themePref: "dark" | "light" | "system"; onToggleTheme: () => void; openGen: number; active: boolean }) {
+function AppMenuButton({ theme, onRefresh, showToast }: {
+  theme: Theme;
+  onRefresh: () => Promise<void>;
+  showToast: (msg: string, ok: boolean) => void;
+}) {
+  const t = theme;
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [autostart, setAutostart] = useState<boolean | null>(null);
+  const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!inTauri) {
+      setAutostart(false);
+      return;
+    }
+    invoke<boolean>("get_autostart_enabled")
+      .then(setAutostart)
+      .catch(() => setAutostart(false));
+  }, [inTauri]);
+
+  const itemStyle: CSSProperties = {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "8px 9px",
+    border: 0,
+    borderRadius: 7,
+    background: "transparent",
+    color: t.text,
+    font: `600 11.5px ${t.ui}`,
+    cursor: busy ? "default" : "pointer",
+    textAlign: "left",
+  };
+  const checkStyle: CSSProperties = {
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: `1px solid ${autostart ? t.accent : t.segBorder}`,
+    background: autostart ? t.accent : t.segBg,
+    color: "#fff",
+    font: `700 10px ${t.ui}`,
+    flex: "0 0 auto",
+  };
+
+  const doRefresh = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onRefresh();
+      setOpen(false);
+      showToast("Refreshed", true);
+    } catch {
+      showToast("Refresh failed", false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleAutostart = async () => {
+    if (busy || !inTauri) return;
+    const next = !(autostart ?? false);
+    setBusy(true);
+    try {
+      const actual = await invoke<boolean>("set_autostart_enabled", { enabled: next });
+      setAutostart(actual);
+      showToast(actual ? "Launch at Login on" : "Launch at Login off", true);
+    } catch {
+      showToast("Launch setting failed", false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const quit = () => {
+    if (!inTauri) return;
+    invoke("quit_app").catch(() => showToast("Quit failed", false));
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen((v) => !v)} title="Menu" aria-label="menu" aria-haspopup="menu" aria-expanded={open} style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 26, height: 26, borderRadius: 7, cursor: "pointer", padding: 0,
+        background: open ? t.segOnBg : t.segBg, border: `1px solid ${t.segBorder}`, color: t.dim,
+      }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={t.dim} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="5" r="1.4" />
+          <circle cx="12" cy="12" r="1.4" />
+          <circle cx="12" cy="19" r="1.4" />
+        </svg>
+      </button>
+      {open && (
+        <div role="menu" style={{
+          position: "absolute", right: 0, top: 32, zIndex: 30,
+          width: 184, padding: 5, borderRadius: 10,
+          background: darkenMenuBg(t), border: `1px solid ${t.segBorder}`,
+          boxShadow: "0 14px 36px rgba(0,0,0,0.28)",
+        }}>
+          <button role="menuitem" disabled={busy} onClick={doRefresh} style={itemStyle}>
+            <span>Refresh</span>
+            {busy && <span style={{ color: t.faint, font: `600 10px ${t.mono}` }}>...</span>}
+          </button>
+          <button role="menuitemcheckbox" aria-checked={!!autostart} disabled={busy || !inTauri} onClick={toggleAutostart} style={itemStyle}>
+            <span>Launch at Login</span>
+            <span style={checkStyle}>{autostart ? "✓" : ""}</span>
+          </button>
+          <div style={{ height: 1, background: t.gridLine, margin: "4px 3px" }} />
+          <button role="menuitem" onClick={quit} style={{ ...itemStyle, color: "#e0795f" }}>
+            <span>Quit</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function darkenMenuBg(t: Theme) {
+  return t.card === "#181818" ? "rgba(28,28,28,0.98)" : "rgba(255,255,255,0.98)";
+}
+
+function Panel({ dash, dark, themePref, onToggleTheme, onRefresh, openGen, active }: {
+  dash: Dashboard;
+  dark: boolean;
+  themePref: "dark" | "light" | "system";
+  onToggleTheme: () => void;
+  onRefresh: () => Promise<void>;
+  openGen: number;
+  active: boolean;
+}) {
   const t = TH[dark ? "dark" : "light"];
   // Drag the popover by its body (Windows/Linux only — macOS uses the menu-bar
   // NSPanel and is gated out). A real OS window-drag begins only once the
@@ -388,6 +539,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
             <Segmented value={period} theme={t} onSelect={(v) => setPeriod(v as any)} />
             <ThemeToggle pref={themePref} theme={t} onCycle={onToggleTheme} />
             <ScreenshotButton theme={t} busy={shotBusy} onClick={captureScreenshot} />
+            <AppMenuButton theme={t} onRefresh={onRefresh} showToast={showToast} />
           </div>
         </div>
         {/* scrolling body */}
@@ -627,5 +779,11 @@ export default function App() {
       </div>
     );
   }
-  return <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme} openGen={openGen} active={focused} />;
+  const refreshDashboard = async () => {
+    const d = await fetchDashboard();
+    setDash(d);
+    setErr(null);
+  };
+
+  return <Panel dash={dash} dark={dark} themePref={themePref} onToggleTheme={cycleTheme} onRefresh={refreshDashboard} openGen={openGen} active={focused} />;
 }
