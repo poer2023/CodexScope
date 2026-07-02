@@ -1,6 +1,6 @@
-// Token pricing. Primary source: models.dev (bare model names, matching Codex
-// turn_context model ids when available). Fallback: LiteLLM. Final backstop: a
-// tiny built-in snapshot.
+// Token pricing. OpenAI-published prices are the first source for OpenAI/Codex
+// model ids. Fallbacks then fill gaps from models.dev, LiteLLM, and a bundled
+// LiteLLM snapshot.
 //
 // Matching is layered: exact id → normalized id (strip provider path prefix +
 // unify the ".'↔'p" version separator, e.g. "glm-5.1" ⇄ "glm-5p1").
@@ -136,19 +136,22 @@ impl Pricing {
             exact: HashMap::new(),
             norm: HashMap::new(),
         };
-        // 1. models.dev — primary (inserted first, so it wins on conflict)
+        // 1. OpenAI official pricing snapshot - inserted first, so it wins on
+        //    conflict for OpenAI/Codex model ids.
+        p.ingest_openai_official();
+        // 2. models.dev - fills gaps the official snapshot doesn't cover.
         if let Some(text) = fetch_cached("modelsdev", MODELSDEV_URL, valid_modelsdev) {
             p.ingest_modelsdev(&text);
         }
-        // 2. LiteLLM — fills gaps models.dev doesn't cover
+        // 3. LiteLLM - fills gaps models.dev doesn't cover.
         if let Some(text) = fetch_cached("litellm", LITELLM_URL, valid_litellm) {
             p.ingest_litellm(&text);
         }
-        // 3. bundled LiteLLM snapshot — offline fallback for anything the live
+        // 4. bundled LiteLLM snapshot - offline fallback for anything the live
         //    sources didn't supply (only fills gaps; live prices already won).
         p.ingest_litellm(LITELLM_SNAPSHOT);
-        // 4. built-in backstop (a handful of core models, last resort)
-        p.ingest_builtin();
+        // 5. legacy non-OpenAI backstop (last resort).
+        p.ingest_legacy_fallbacks();
         p
     }
 
@@ -160,7 +163,8 @@ impl Pricing {
             exact: HashMap::new(),
             norm: HashMap::new(),
         };
-        p.ingest_builtin();
+        p.ingest_openai_official();
+        p.ingest_legacy_fallbacks();
         p
     }
 
@@ -263,7 +267,39 @@ impl Pricing {
         }
     }
 
-    fn ingest_builtin(&mut self) {
+    // OpenAI API pricing, standard processing / short context, USD per token.
+    // Source: https://developers.openai.com/api/docs/pricing
+    fn ingest_openai_official(&mut self) {
+        let mk = |i: f64, o: f64, cc: f64, cr: f64| ModelPrice {
+            input: i,
+            output: o,
+            cache_create: cc,
+            cache_read: cr,
+        };
+        let b: &[(&str, ModelPrice)] = &[
+            ("gpt-5.5", mk(5e-6, 30e-6, 0.0, 0.5e-6)),
+            ("gpt-5.5-2026-04-23", mk(5e-6, 30e-6, 0.0, 0.5e-6)),
+            ("gpt-5.4", mk(2.5e-6, 15e-6, 0.0, 0.25e-6)),
+            ("gpt-5.4-2026-03-05", mk(2.5e-6, 15e-6, 0.0, 0.25e-6)),
+            ("gpt-5.4-mini", mk(0.75e-6, 4.5e-6, 0.0, 0.075e-6)),
+            (
+                "gpt-5.4-mini-2026-03-17",
+                mk(0.75e-6, 4.5e-6, 0.0, 0.075e-6),
+            ),
+            ("gpt-5.4-nano", mk(0.20e-6, 1.25e-6, 0.0, 0.02e-6)),
+            (
+                "gpt-5.4-nano-2026-03-17",
+                mk(0.20e-6, 1.25e-6, 0.0, 0.02e-6),
+            ),
+            ("chat-latest", mk(5e-6, 30e-6, 0.0, 0.5e-6)),
+            ("gpt-5.3-codex", mk(1.75e-6, 14e-6, 0.0, 0.175e-6)),
+        ];
+        for (id, price) in b {
+            self.insert(id, price.clone());
+        }
+    }
+
+    fn ingest_legacy_fallbacks(&mut self) {
         let mk = |i: f64, o: f64, cc: f64, cr: f64| ModelPrice {
             input: i,
             output: o,
@@ -310,5 +346,25 @@ impl Pricing {
     #[allow(dead_code)]
     pub fn known(&self, model: &str) -> bool {
         self.lookup(model).is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_prices_openai_official_models_without_network() {
+        let pricing = Pricing::builtin_only();
+
+        let gpt55 = pricing
+            .cost("gpt-5.5", 1_000_000.0, 1_000_000.0, 0.0, 1_000_000.0)
+            .unwrap();
+        assert!((gpt55 - 35.5).abs() < 1e-9);
+
+        let codex = pricing
+            .cost("gpt-5.3-codex", 1_000_000.0, 1_000_000.0, 0.0, 1_000_000.0)
+            .unwrap();
+        assert!((codex - 15.925).abs() < 1e-9);
     }
 }

@@ -33,7 +33,7 @@ CodexScope 基于 MIT 协议的 [HduSy/tokenscope](https://github.com/HduSy/toke
 | 账号用量概览 | `codex app-server --stdio` 的 `account/usage/read` |
 | rate-limit 窗口 | `codex app-server --stdio` 的 `account/rateLimits/read` |
 | 手动 reset credit 到期时间 | 可用时使用本机 Codex auth 读取 ChatGPT reset-credit 接口 |
-| 模型价格 | `models.dev`，再兜底 LiteLLM 和内置快照 |
+| 模型价格 | OpenAI/Codex 模型优先使用 OpenAI 公开 API 价格，再兜底 `models.dev`、LiteLLM 和内置快照 |
 | 本地缓存 | macOS 下 `~/Library/Caches/codexscope/` |
 
 CodexScope 对 Codex 会话日志只读。它读取本地 JSONL 和 Codex 账号元数据，不修改 Codex 配置或会话历史。
@@ -49,7 +49,7 @@ CodexScope 对 Codex 会话日志只读。它读取本地 JSONL 和 Codex 账号
 - 当 Codex app-server 的账号用量可用时，all-time profile 和每日热力图优先采用账号数据；否则使用本机保留日志估算
 - rate-limit 单独缓存，刷新失败时仍能展示上一次可用状态
 
-> API value 是基于公开模型价格的等效价值估算，不等于 ChatGPT/Codex 订阅账单。
+> API value 对已公开价格的 OpenAI/Codex 模型优先使用 OpenAI 官方 API 价格估算；第三方公开价格表只作为兜底。它不等于 ChatGPT/Codex 订阅账单或 quota 规则。
 
 ## Token 类型与估算公式
 
@@ -68,7 +68,7 @@ UI 中展示的总量：
 total = input + cached_input + output
 ```
 
-API 等效价值估算：
+API 等效价值估算会匹配最接近的价格条目。对 OpenAI 已公开 API 价格的 Codex/OpenAI 模型，CodexScope 优先使用标准处理、短上下文价格：
 
 ```text
 value = input        * price.input
@@ -76,7 +76,7 @@ value = input        * price.input
       + output       * price.output
 ```
 
-当前 CodexScope 消费的 Codex 事件没有单独暴露 cache write，因此 cache creation 保持为 0，等未来日志提供后再接入。
+当前 CodexScope 消费的 Codex 事件没有单独暴露 cache write，因此 cache creation 保持为 0，等未来日志提供后再接入。长上下文、Batch、Flex、Priority、数据驻留加价以及 ChatGPT 订阅账单都可能和这个估算不同。
 
 ## 安装
 
@@ -142,7 +142,7 @@ src-tauri/src/
   store.rs                 增量读取 Codex rollout JSONL
   parser.rs                Day / Week / Month 聚合和 profile stats
   account_usage.rs         Codex app-server 与 reset-credit 刷新
-  pricing.rs               models.dev / LiteLLM 价格加载与估算
+  pricing.rs               OpenAI API 价格优先覆盖 + models.dev / LiteLLM 兜底估算
   model.rs                 返回前端的数据结构
   lib.rs                   Tauri 命令、菜单栏托盘和弹窗行为
 ```

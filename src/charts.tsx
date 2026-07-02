@@ -59,8 +59,10 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
           <div key={i} style={{ position: "absolute", left: 0, right: 0, bottom: `${g * 100}%`, borderTop: `1px solid ${t.gridLine}` }} />
         ))}
         {data.map((d, i) => {
-          // stacked top→bottom: output · input(+cache)
-          const hO = (d.output / max) * height, hI = ((d.input + d.cache) / max) * height;
+          // Stacked top-to-bottom: output, cached input, uncached input.
+          const hO = (d.output / max) * height;
+          const hC = (d.cache / max) * height;
+          const hI = (d.input / max) * height;
           const empty = d.input + d.cache + d.output <= 0;
           const on = hi === d;
           return (
@@ -69,6 +71,7 @@ export function BarChart({ data, theme, height = 96, accent, accentSoft, radius 
               onMouseLeave={empty ? undefined : () => setHi(null)}
               style={{ flex: 1, alignSelf: "stretch", display: "flex", flexDirection: "column", justifyContent: "flex-end", position: "relative", zIndex: 1, cursor: "default", opacity: hi && !on && !empty ? 0.55 : 1, transition: "opacity .12s" }}>
               <div style={{ height: hO, background: accentSoft, borderRadius: `${effRadius}px ${effRadius}px 0 0` }} />
+              <div style={{ height: hC, background: t.cacheCol }} />
               <div style={{ height: hI, background: accent }} />
             </div>
           );

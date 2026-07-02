@@ -17,7 +17,7 @@ pub struct ModelStat {
     pub tokens: f64, // M tokens (input+output, weighted)
     pub cost: f64,   // USD estimate
     pub color: String,
-    pub priced: bool, // false = no pricing data in LiteLLM (cost is unknown, not $0)
+    pub priced: bool, // false = no pricing data (cost is unknown, not $0)
 }
 
 #[derive(Debug, Clone, Serialize)]

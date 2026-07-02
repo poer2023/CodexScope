@@ -33,7 +33,7 @@ CodexScope is adapted from [HduSy/tokenscope](https://github.com/HduSy/tokenscop
 | Account usage summary | `codex app-server --stdio`, method `account/usage/read` |
 | Rate-limit windows | `codex app-server --stdio`, method `account/rateLimits/read` |
 | Manual reset-credit expiry | ChatGPT reset-credit endpoint using local Codex auth, when available |
-| Model prices | `models.dev`, then LiteLLM, then bundled snapshot |
+| Model prices | OpenAI-published API prices for OpenAI/Codex models, then `models.dev`, LiteLLM, and the bundled snapshot |
 | Local cache | `~/Library/Caches/codexscope/` on macOS |
 
 CodexScope is read-only with respect to Codex session logs. It reads local JSONL files and Codex account metadata; it does not edit Codex configuration or session history.
@@ -49,7 +49,7 @@ CodexScope is read-only with respect to Codex session logs. It reads local JSONL
 - Account usage from the Codex app server is preferred for all-time profile and daily heatmap totals when available; retained local logs are the fallback
 - Rate-limit data is cached separately so the dashboard can still display the last known state if a refresh fails
 
-> API value is an estimate based on public model prices. ChatGPT/Codex subscription billing and quota behavior may differ.
+> API value is an estimate based on OpenAI's published API prices for known OpenAI/Codex models, with public third-party price tables used only as fallbacks. ChatGPT/Codex subscription billing and quota behavior may differ.
 
 ## Token Types & Cost Formula
 
@@ -68,7 +68,7 @@ Tokens shown in the UI:
 total = input + cached_input + output
 ```
 
-Estimated API value is calculated with the best matching public price table entry:
+Estimated API value is calculated with the best matching price entry. For OpenAI/Codex models with published OpenAI API pricing, CodexScope uses the standard-processing, short-context API price as the first priority:
 
 ```text
 value = input        * price.input
@@ -76,7 +76,7 @@ value = input        * price.input
       + output       * price.output
 ```
 
-Codex logs do not currently expose a separate cache-write bucket in the events this app consumes, so cache creation is kept at zero unless future logs provide it.
+Codex logs do not currently expose a separate cache-write bucket in the events this app consumes, so cache creation is kept at zero unless future logs provide it. Long-context, Batch, Flex, Priority, data-residency, and ChatGPT subscription billing may differ from this estimate.
 
 ## Install
 
@@ -142,7 +142,7 @@ src-tauri/src/
   store.rs                 incremental Codex rollout JSONL ingest
   parser.rs                Day / Week / Month aggregation + profile stats
   account_usage.rs         Codex app-server and reset-credit refresh
-  pricing.rs               models.dev / LiteLLM price loading and costing
+  pricing.rs               OpenAI API price overrides + models.dev / LiteLLM fallback costing
   model.rs                 data structures returned to the frontend
   lib.rs                   Tauri commands + menu-bar tray / popover behavior
 ```

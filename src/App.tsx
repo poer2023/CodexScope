@@ -156,13 +156,18 @@ function effortLabel(effort: string) {
   return labels[effort] || (effort ? effort : "—");
 }
 
-// Input/Output legend: full words by default, abbreviated to In/Out only
+// Input/Cached/Output legend: full words by default, abbreviated only
 // when the row would otherwise overflow the available width.
-function SplitLegend({ t, inputM, outputM }:
-  { t: Theme; inputM: number; outputM: number }) {
+function SplitLegend({ t, inputM, cacheM, outputM }:
+  { t: Theme; inputM: number; cacheM: number; outputM: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
-  const key = `${inputM}|${outputM}`;
+  const key = `${inputM}|${cacheM}|${outputM}`;
+  const parts = [
+    { label: "Input", compact: "In", color: t.accent, value: inputM },
+    ...(cacheM > 0 ? [{ label: "Cached", compact: "Cache", color: t.cacheCol, value: cacheM }] : []),
+    { label: "Output", compact: "Out", color: t.accentSoft, value: outputM },
+  ];
   // reset to full labels whenever the numbers change, then re-measure
   useLayoutEffect(() => { setCompact(false); }, [key]);
   useLayoutEffect(() => {
@@ -171,11 +176,12 @@ function SplitLegend({ t, inputM, outputM }:
   });
   return (
     <div ref={ref} style={{
-      display: "flex", alignItems: "center", gap: 14,
+      display: "flex", alignItems: "center", gap: 10,
       font: `500 10px ${t.mono}`, color: t.dim, marginBottom: 14, whiteSpace: "nowrap", overflow: "hidden",
     }}>
-      <span><span style={{ color: t.accent }}>●</span> {compact ? "In" : "Input"} {inputM.toFixed(2)}M</span>
-      <span><span style={{ color: t.accentSoft }}>●</span> {compact ? "Out" : "Output"} {outputM.toFixed(2)}M</span>
+      {parts.map((p) => (
+        <span key={p.label}><span style={{ color: p.color }}>●</span> {compact ? p.compact : p.label} {p.value.toFixed(2)}M</span>
+      ))}
     </div>
   );
 }
@@ -261,7 +267,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
     (m) => Math.round((m.tokens / (M.totalTokens || 1)) * 1000) / 10 >= 0.1
   );
   const costModels = models.filter((m) => m.cost > 0);
-  // models that were used but have no LiteLLM pricing (cost unknown, not $0)
+  // models that were used but have no pricing entry (cost unknown, not $0)
   const unpricedModels = models.filter((m) => !m.priced && m.tokens > 0);
   const maxM = Math.max(...tokenModels.map((m) => m.tokens), 1e-9);
   const tokenShares = tokenModels.map(
@@ -400,15 +406,16 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
             <div style={{ font: `600 18px ${t.mono}`, color: t.accent, marginTop: 2 }}>${M.cost.toFixed(2)}</div>
           </div>
         </div>
-        {/* input(+cache) / output split — 2-colour; cache hits fold into input.
+        {/* input / cached input / output split.
             When there's no usage the bar is just the empty track (no slivers). */}
         <div style={{ display: "flex", gap: 0, height: 7, borderRadius: 4, overflow: "hidden", marginBottom: 5, background: t.gridLine }}>
           {M.totalTokens > 0 && <>
-            <div style={{ flexGrow: Math.max(M.inputTokens + M.cacheTokens, 1e-6), flexBasis: 0, minWidth: 4, background: t.accent }} />
+            <div style={{ flexGrow: Math.max(M.inputTokens, 1e-6), flexBasis: 0, minWidth: 4, background: t.accent }} />
+            {M.cacheTokens > 0 && <div style={{ flexGrow: Math.max(M.cacheTokens, 1e-6), flexBasis: 0, minWidth: 4, background: t.cacheCol }} />}
             <div style={{ flexGrow: Math.max(M.outputTokens, 1e-6), flexBasis: 0, minWidth: 4, background: t.accentSoft }} />
           </>}
         </div>
-        <SplitLegend t={t} inputM={M.inputTokens + M.cacheTokens} outputM={M.outputTokens} />
+        <SplitLegend t={t} inputM={M.inputTokens} cacheM={M.cacheTokens} outputM={M.outputTokens} />
         {/* bar chart */}
         <BarChart data={P.series} theme={t} height={84} />
         <SectionRule t={t} m="14px 0 10px" />
@@ -479,7 +486,7 @@ function Panel({ dash, dark, themePref, onToggleTheme, openGen, active }: { dash
         <Heatmap days={dash.heatmap} theme={t} accent={t.accent} />
         {/* footer note */}
         <div style={{ marginTop: 12, font: `500 8.5px ${t.mono}`, color: t.faint, textAlign: "center" }}>
-          Est. API value via models.dev / LiteLLM · ChatGPT subscription billing may differ
+          Est. API value via OpenAI API prices, then models.dev / LiteLLM · ChatGPT subscription billing may differ
         </div>
         </div>{/* /scrolling body */}
       </div>
