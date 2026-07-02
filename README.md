@@ -152,3 +152,9 @@ src-tauri/src/
 CodexScope is based on [HduSy/tokenscope](https://github.com/HduSy/tokenscope). The original project is licensed under the MIT License, and its copyright notice is preserved in [LICENSE](LICENSE).
 
 This adaptation changes the product target from Claude CLI usage to Codex usage, adds Codex account/rate-limit integrations, updates the UI labels and icons, and keeps the source available under the same MIT terms. See [NOTICE](NOTICE) for the attribution note.
+
+## Community
+
+- Contributions: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security reports: [SECURITY.md](SECURITY.md)
+- Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)

@@ -152,3 +152,9 @@ src-tauri/src/
 CodexScope 基于 [HduSy/tokenscope](https://github.com/HduSy/tokenscope) 改编。原项目采用 MIT License，原版权声明保留在 [LICENSE](LICENSE)。
 
 本改编版把产品目标从 Claude CLI 用量分析改为 Codex 用量分析，增加了 Codex 账号 / rate-limit 数据读取，更新了 UI 文案、图标和数据语义，并继续按 MIT 协议公开。详见 [NOTICE](NOTICE)。
+
+## 社区
+
+- 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 安全报告：[SECURITY.md](SECURITY.md)
+- 行为准则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
