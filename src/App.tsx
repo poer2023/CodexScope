@@ -98,7 +98,7 @@ function MiniStat({ label, value, sub, theme, accent, children }:
     <div style={{ background: theme.gridLine, borderRadius: 9, padding: "9px 10px", minWidth: 0 }}>
       <div style={{ font: `500 9.5px ${theme.ui}`, color: theme.dim, letterSpacing: ".04em", textTransform: "uppercase" }}>{label}</div>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: 3, gap: 6 }}>
-        <span style={{ font: `600 17px/1 ${theme.mono}`, color: accent || theme.text }}>{value}</span>
+        <span style={{ font: `600 17px/1 ${theme.mono}`, color: accent || theme.text, whiteSpace: "nowrap" }}>{value}</span>
         {children}
       </div>
       {sub && <div style={{ font: `500 9px ${theme.mono}`, color: theme.faint, marginTop: 3 }}>{sub}</div>}
