@@ -23,7 +23,7 @@ tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "5"
+dirs = "6"
 ureq = { version = "2", features = ["json"] }
 walkdir = "2"
 # watch ~/.codex rollout logs so the dashboard refreshes within ~1s of a write
